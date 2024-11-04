@@ -10,6 +10,7 @@ import (
 )
 
 func TestSign(t *testing.T) {
+
 	client, err := NewClient("C4W2QJYnE2z3HQtW4SeH6F2nzWSiPZuYAukuJfV8xHbW")
 	if err != nil {
 		t.Fatalf("Failed to initialize client: %v", err)
@@ -20,19 +21,19 @@ func TestSign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to sign message: %v", err)
 	}
-	decodedPubKey := client.Key.PublicKey()
-	if err != nil {
-		t.Fatalf("Failed to decode public key: %v", err)
-	}
-
-	fmt.Printf("📌 %+v\n", decodedPubKey)
-
-	// Verify the signature using the public key and the message
-	valid, err := tweetnacl.CryptoSignOpen(signature, decodedPubKey.Bytes())
+	valid, err := tweetnacl.CryptoSignOpen(signature, client.Key.PublicKey().Bytes())
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("📌 %+s\n", valid)
+	// decodedPubKey :=
+	// if err != nil {
+	// 	t.Fatalf("Failed to decode public key: %v", err)
+	// }
+
+	// fmt.Printf("📌 %+v\n", len(decodedPubKey))
+
+	// Verify the signature using the public key and the message
 
 	// fmt.Printf("📌 %+v\n", signature)
 

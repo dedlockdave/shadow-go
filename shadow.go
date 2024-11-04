@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httputil"
@@ -57,52 +56,29 @@ func NewClient(storageAccountPubKey string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) SignDetached(fileNamesString string) (string, error) {
-	// Create the message to be signed
+// createSignMessage creates the message to be signed for Shadow Drive
+func (c *Client) createSignMessage(fileNamesString string) string {
 	hashSum := sha256.Sum256([]byte(fileNamesString))
 	fileNamesHashed := hex.EncodeToString(hashSum[:])
-	msgTemplate := "ShdwDrive Signed Message:\nStorage Account: %s\nUpload files with hash: %s"
-	message := fmt.Sprintf(msgTemplate, c.StorageAccountPubKey, fileNamesHashed)
+	msgTemplate := "Shadow Drive Signed Message:\nStorage Account: %s\nUpload files with hash: %s"
+	return fmt.Sprintf(msgTemplate, c.StorageAccountPubKey, fileNamesHashed)
+}
 
-	sk, err := base58.Decode(c.Key.String())
+func (c *Client) SignDetached(fileNamesString string) (string, error) {
+
+	signedMessage, err := c.Sign(fileNamesString)
 	if err != nil {
-		return "", fmt.Errorf("could not decode %s: %s", c.Key, err)
+		return "", fmt.Errorf(": %s", err)
 	}
 
-	if len(sk) != 64 {
-		log.Fatal("Decoded key is not the correct size for a NaCl secret key (32 bytes)")
-	}
-	signedMessage, err := tweetnacl.CryptoSign([]byte(message), sk)
-	if err != nil {
-		return "", fmt.Errorf("CryptoSign: %s", err)
-	}
-
-	// Extract the detached signature (first 64 bytes)
 	detachedSignature := signedMessage[:64]
 
-	fmt.Printf("Detached Signature: %x\n", detachedSignature)
-
-	// bs := ed25519.SignDetached(ed25519.PrivateKey(sk), []byte(message))
 	return base58.Encode(detachedSignature), nil
 }
 
 func (c *Client) Sign(fileNamesString string) ([]byte, error) {
-	// Create the message to be signed
-	hashSum := sha256.Sum256([]byte(fileNamesString))
-	fileNamesHashed := hex.EncodeToString(hashSum[:])
-	msgTemplate := "ShdwDrive Signed Message:\nStorage Account: %s\nUpload files with hash: %s"
-	message := fmt.Sprintf(msgTemplate, c.StorageAccountPubKey, fileNamesHashed)
-
-	sk, err := base58.Decode(c.Key.String())
-	if err != nil {
-		return nil, fmt.Errorf("could not decode %s: %s", c.Key, err)
-	}
-
-	if len(sk) != 64 {
-		log.Fatal("Decoded key is not the correct size for a NaCl secret key (32 bytes)")
-	}
-	return tweetnacl.CryptoSign([]byte(message), sk)
-
+	message := c.createSignMessage(fileNamesString)
+	return tweetnacl.CryptoSign([]byte(message), c.Key)
 }
 
 func (c *Client) UploadFiles(files []File) (*http.Response, error) {
@@ -112,7 +88,6 @@ func (c *Client) UploadFiles(files []File) (*http.Response, error) {
 	}
 
 	fileNamesString := strings.Join(allFileNames, ",")
-
 	signedMessage, err := c.SignDetached(fileNamesString)
 	if err != nil {
 		return nil, fmt.Errorf("could not sign key: %s", err)
