@@ -1,4 +1,4 @@
-module shadow-go
+module github.com/dedlockdave/shadow-go
 
 go 1.22.5
 
