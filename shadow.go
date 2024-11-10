@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -17,12 +18,6 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/twystd/tweetnacl-go/tweetnacl"
 )
-
-type File struct {
-	FileName    string
-	Data        []byte
-	ContentType string
-}
 
 type Client struct {
 	Endpoint             string
@@ -39,10 +34,8 @@ func NewClient(storageAccountPubKey string) (*Client, error) {
 
 	privateKey, err := solana.PrivateKeyFromBase58(os.Getenv("SHADOW_KEY"))
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("could not find SHADOW_KEY")
 	}
-
-	// storageAccountPubKey := os.Getenv("SHADOW_STORAGE_ACCOUNT_PUB_KEY")
 
 	if storageAccountPubKey == "" {
 		return nil, fmt.Errorf("no SHADOW_STORAGE_ACCOUNT_PUB_KEY found in env")
@@ -81,13 +74,12 @@ func (c *Client) Sign(fileNamesString string) ([]byte, error) {
 	return tweetnacl.CryptoSign([]byte(message), c.Key)
 }
 
-func (c *Client) UploadFiles(files []File) (*http.Response, error) {
-	var allFileNames []string
-	for _, file := range files {
-		allFileNames = append(allFileNames, file.FileName)
+func (c *Client) UploadFiles(files []multipart.File, filenames []string, contentTypes []string) ([]string, error) {
+	if len(files) != len(filenames) || len(files) != len(contentTypes) {
+		return nil, fmt.Errorf("files, filenames, and contentTypes must have the same length")
 	}
 
-	fileNamesString := strings.Join(allFileNames, ",")
+	fileNamesString := strings.Join(filenames, ",")
 	signedMessage, err := c.SignDetached(fileNamesString)
 	if err != nil {
 		return nil, fmt.Errorf("could not sign key: %s", err)
@@ -96,19 +88,21 @@ func (c *Client) UploadFiles(files []File) (*http.Response, error) {
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	for _, file := range files {
+	for i, file := range files {
+		filename := filenames[i]
+		contentType := contentTypes[i]
 
 		partHeader := textproto.MIMEHeader{}
 		partHeader.Set("Content-Disposition",
-			fmt.Sprintf(`form-data; name="file"; filename="%s"`, file.FileName))
-		partHeader.Set("Content-Type", file.ContentType)
+			fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+		partHeader.Set("Content-Type", contentType)
 
 		part, err := writer.CreatePart(partHeader)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = io.Copy(part, bytes.NewReader(file.Data))
+		_, err = io.Copy(part, file)
 		if err != nil {
 			return nil, err
 		}
@@ -141,6 +135,24 @@ func (c *Client) UploadFiles(files []File) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
+	// Read and parse the response
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
 
-	return resp, nil
+	// Extract finalized_locations
+	locations, ok := result["finalized_locations"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("finalized_locations not found in response")
+	}
+
+	// Convert locations to []string
+	finalizedLocations := make([]string, len(locations))
+	for i, loc := range locations {
+		finalizedLocations[i] = loc.(string)
+	}
+
+	return finalizedLocations, nil
 }

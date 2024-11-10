@@ -1,9 +1,10 @@
 package shadow
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"testing"
 
 	"github.com/twystd/tweetnacl-go/tweetnacl"
@@ -26,31 +27,23 @@ func TestSign(t *testing.T) {
 		log.Fatal(err)
 	}
 	fmt.Printf("📌 %+s\n", valid)
-	// decodedPubKey :=
-	// if err != nil {
-	// 	t.Fatalf("Failed to decode public key: %v", err)
-	// }
+}
 
-	// fmt.Printf("📌 %+v\n", len(decodedPubKey))
+// InMemoryFile implements the multipart.File interface for testing
+type InMemoryFile struct {
+	*bytes.Reader
+}
 
-	// Verify the signature using the public key and the message
+func (f *InMemoryFile) Close() error {
+	// No action needed for in-memory file
+	return nil
+}
 
-	// fmt.Printf("📌 %+v\n", signature)
-
-	// // Decode the base58 signature
-	// decodedSignature, err := base58.Decode(signature)
-	// if err != nil {
-	// 	t.Fatalf("Failed to decode signature: %v", err)
-	// }
-
-	// Reconstruct the original message that was signed
-	// hashSum := sha256.Sum256([]byte(message))
-	// fileNamesHashed := hex.EncodeToString(hashSum[:])
-	// msgTemplate := "ShdwDrive Signed Message:\nStorage Account: %s\nUpload files with hash: %s"
-	// originalMessage := fmt.Sprintf(msgTemplate, client.StorageAccountPubKey, fileNamesHashed)
-
-	// Decode the base58 encoded public key from the client
-
+// NewInMemoryFile creates a new InMemoryFile with the provided data
+func NewInMemoryFile(data []byte) *InMemoryFile {
+	return &InMemoryFile{
+		Reader: bytes.NewReader(data),
+	}
 }
 
 func TestUpload(t *testing.T) {
@@ -62,23 +55,21 @@ func TestUpload(t *testing.T) {
 		t.Fatal("Client is nil")
 	}
 
-	res, err := client.UploadFiles([]File{
-		{
-			FileName:    "test-file",
-			Data:        []byte("hello"),
-			ContentType: "text/plain",
-		},
-	})
+	// Create the file content
+	fileContent := []byte("hello")
 
+	// Create an in-memory file that satisfies the multipart.File interface
+	file := NewInMemoryFile(fileContent)
+
+	// Prepare slices for the files, filenames, and contentTypes
+	files := []multipart.File{file}
+	filenames := []string{"test-file.txt"}
+	contentTypes := []string{"text/plain"}
+
+	res, err := client.UploadFiles(files, filenames, contentTypes)
 	if err != nil {
-		log.Fatalf("we failed %s", err)
+		t.Fatalf("UploadFiles failed: %v", err)
 	}
 
-	defer res.Body.Close()
-	var result map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
-	log.Printf("Response: %v", result)
-
+	log.Printf("Response: %v", res)
 }
