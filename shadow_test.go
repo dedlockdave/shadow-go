@@ -1,7 +1,6 @@
 package shadow
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
@@ -74,11 +73,6 @@ func TestUpload(t *testing.T) {
 		log.Fatalf("we failed %s", err)
 	}
 
-	defer res.Body.Close()
-	var result map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
-	log.Printf("Response: %v", result)
+	fmt.Printf("📌 %+v\n", res)
 
 }

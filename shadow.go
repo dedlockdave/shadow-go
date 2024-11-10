@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -22,6 +23,26 @@ type File struct {
 	FileName    string
 	Data        []byte
 	ContentType string
+}
+
+func NewFileFromMultipart(mpFile multipart.File, header *multipart.FileHeader) (File, error) {
+	// Read the entire file into memory
+	data, err := io.ReadAll(mpFile)
+	if err != nil {
+		return File{}, fmt.Errorf("failed to read multipart file: %w", err)
+	}
+
+	// Detect content type if not provided in header
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+
+	return File{
+		FileName:    header.Filename,
+		Data:        data,
+		ContentType: contentType,
+	}, nil
 }
 
 type Client struct {
@@ -81,7 +102,7 @@ func (c *Client) Sign(fileNamesString string) ([]byte, error) {
 	return tweetnacl.CryptoSign([]byte(message), c.Key)
 }
 
-func (c *Client) UploadFiles(files []File) (*http.Response, error) {
+func (c *Client) UploadFiles(files []File) ([]string, error) {
 	var allFileNames []string
 	for _, file := range files {
 		allFileNames = append(allFileNames, file.FileName)
@@ -141,6 +162,24 @@ func (c *Client) UploadFiles(files []File) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
+	// Read and parse the response
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
 
-	return resp, nil
+	// Extract finalized_locations
+	locations, ok := result["finalized_locations"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("finalized_locations not found in response")
+	}
+
+	// Convert locations to []string
+	finalizedLocations := make([]string, len(locations))
+	for i, loc := range locations {
+		finalizedLocations[i] = loc.(string)
+	}
+
+	return finalizedLocations, nil
 }
