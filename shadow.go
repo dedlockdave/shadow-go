@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/http/httputil"
 	"net/textproto"
 	"os"
 	"strings"
@@ -149,13 +148,6 @@ func (c *Client) UploadFiles(files []File) ([]string, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	reqDump, err := httputil.DumpRequestOut(req, true)
-	if err != nil {
-		fmt.Println("Error dumping request:", err)
-	} else {
-		fmt.Println("HTTP Request:")
-		fmt.Println(string(reqDump))
-	}
 
 	// Send the request
 	resp, err := c.httpClient.Do(req)
